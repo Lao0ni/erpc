@@ -48,7 +48,7 @@
     RUN echo "👷‍♂️ ts-dev stage is running with RAILWAY_SERVICE_ID=${RAILWAY_SERVICE_ID}"
     
     # Install & build, using hard‑coded cache ID (replace SERVICE_ID below)
-    RUN --mount=type=cache,id=s/3ddb5979-c487-4bef-aac0-330352a8a6a8-pnpm-store-dev,target=/pnpm/store-dev \
+    RUN --mount=type=cache,id=pnpm-store-dev,target=/pnpm/store-dev \
         pnpm install --store-dir /pnpm/store-dev --frozen-lockfile
     RUN pnpm build
     
@@ -67,7 +67,7 @@
     RUN echo "🛠 ts-prod stage is running with RAILWAY_SERVICE_ID=${RAILWAY_SERVICE_ID}"
     
     # Install prod only, using hard‑coded cache ID
-    RUN --mount=type=cache,id=s/3ddb5979-c487-4bef-aac0-330352a8a6a8-pnpm-store-prod,target=/pnpm/store-prod \
+    RUN --mount=type=cache,id=pnpm-store-prod,target=/pnpm/store-prod \
         pnpm install --store-dir /pnpm/store-prod --prod --frozen-lockfile
     
     # ---------------------------------------------------------------------------
