@@ -22,7 +22,6 @@ COPY . .
 
 # Set build arguments
 ARG VERSION
-ARG RAILWAY_SERVICE_ID
 ARG COMMIT_SHA
 
 # Set environment variables for Go build
@@ -49,21 +48,20 @@ COPY pnpm* /temp/dev/
 COPY package.json /temp/dev/package.json
 
 # Install everything and build
-RUN --mount=type=cache,id=s/${RAILWAY_SERVICE_ID}-pnpm-store-dev,target=/pnpm/store-dev \
+RUN --mount=type=cache,id=s/d1aba08c-28bd-43be-8a78-539957b25bc2-pnpm-store-dev,target=/pnpm/store-dev \
     cd /temp/dev && pnpm install --store-dir /pnpm/store-dev --frozen-lockfile
 RUN cd /temp/dev && pnpm build
 
 # Stage where we will install prod dependencies only
 FROM ts-core AS ts-prod
 RUN mkdir -p /temp/prod/typescript
-ARG RAILWAY_SERVICE_ID
 
 COPY typescript/config /temp/prod/typescript/config
 COPY pnpm* /temp/prod/
 COPY package.json /temp/prod/package.json
 
 # Install every prod dependencies
-RUN --mount=type=cache,id=s/${RAILWAY_SERVICE_ID}-pnpm-store-prod,target=/pnpm/store-prod \
+RUN --mount=type=cache,id=s/d1aba08c-28bd-43be-8a78-539957b25bc2-pnpm-store-prod,target=/pnpm/store-prod \
     cd /temp/prod && pnpm install --store-dir /pnpm/store-prod --prod --frozen-lockfile
 
 # Final stage
