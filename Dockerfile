@@ -1,4 +1,4 @@
-# syntax = docker/dockerfile:1.4
+# syntax=docker/dockerfile:1.4
 
 # This Dockerfile is used to build the eRPC server image.
 # Docker build stages:
