@@ -1,93 +1,87 @@
-# syntax=docker/dockerfile:1.4
+# syntax = docker/dockerfile:1.4
 
-# ---------------------------------------------------------------------------
-# Stage 1: Build Go Binary
-# ---------------------------------------------------------------------------
-    FROM golang:1.23-alpine AS go-builder
+# This Dockerfile is used to build the eRPC server image.
+# Docker build stages:
+#     - go-builder -> build the go binary
+#     - ts-core -> Core stage for TS related stuff (just installing pnpm)
+#     - ts-dev -> Install dev dependencies and compile the SDK
+#     - ts-prod -> Install prod dependencies only
+#     - final -> Final stage where we copy the Go binary and the TS files
 
-    # Arguments for versioning
-    ARG VERSION
-    ARG COMMIT_SHA
-    
-    WORKDIR /root
-    
-    # Cache Go modules
-    COPY go.mod go.sum ./
-    RUN go mod download
-    
-    # Copy the full source and build
-    COPY . .
-    ENV CGO_ENABLED=0 \
-        GOOS=linux \
-        LDFLAGS="-w -s -X common.ErpcVersion=${VERSION} -X common.ErpcCommitSha=${COMMIT_SHA}"
-    RUN go build -v -ldflags="$LDFLAGS" -a -installsuffix cgo -o erpc-server ./cmd/erpc/main.go \
-        && go build -v -ldflags="$LDFLAGS" -a -installsuffix cgo -tags pprof -o erpc-server-pprof ./cmd/erpc/*.go
-    
-    # ---------------------------------------------------------------------------
-    # Stage 2: Prepare PNPM (core)
-    # ---------------------------------------------------------------------------
-    FROM node:20-alpine AS ts-core
-    RUN npm install -g pnpm
-    
-    # ---------------------------------------------------------------------------
-    # Stage 3: Install Dev Dependencies + Build TS SDK
-    # ---------------------------------------------------------------------------
-    FROM ts-core AS ts-dev
-    # Ensure build arg for Railway service ID
-    ARG RAILWAY_SERVICE_ID
-    
-    WORKDIR /temp/dev
-    RUN mkdir -p typescript
-    
-    # Copy TS config and package files
-    COPY typescript/config ./typescript/config
-    COPY pnpm* ./
-    COPY package.json ./
-    
-    # Simple test to confirm Dockerfile is being parsed
-    RUN echo "👷‍♂️ ts-dev stage is running with RAILWAY_SERVICE_ID=${RAILWAY_SERVICE_ID}"
-    
-    # Install & build, using hard‑coded cache ID (replace SERVICE_ID below)
-    RUN --mount=type=cache,id=pnpm-store-dev,target=/pnpm/store-dev \
-        pnpm install --store-dir /pnpm/store-dev --frozen-lockfile
-    RUN pnpm build
-    
-    # ---------------------------------------------------------------------------
-    # Stage 4: Install Prod Dependencies
-    # ---------------------------------------------------------------------------
-    FROM ts-core AS ts-prod
-    ARG RAILWAY_SERVICE_ID
-    WORKDIR /temp/prod
-    RUN mkdir -p typescript
-    
-    COPY typescript/config ./typescript/config
-    COPY pnpm* ./
-    COPY package.json ./
-    
-    RUN echo "🛠 ts-prod stage is running with RAILWAY_SERVICE_ID=${RAILWAY_SERVICE_ID}"
-    
-    # Install prod only, using hard‑coded cache ID
-    RUN --mount=type=cache,id=pnpm-store-prod,target=/pnpm/store-prod \
-        pnpm install --store-dir /pnpm/store-prod --prod --frozen-lockfile
-    
-    # ---------------------------------------------------------------------------
-    # Stage 5: Final Image
-    # ---------------------------------------------------------------------------
-    FROM debian:stable-slim AS final
-    WORKDIR /root
-    
-    # Install CA certs
-    RUN apt-get update && \
-        apt-get install -y --no-install-recommends ca-certificates && \
-        rm -rf /var/lib/apt/lists/*
-    
-    # Copy Go binaries
-    COPY --from=go-builder /root/erpc-server .
-    COPY --from=go-builder /root/erpc-server-pprof .
-    
-    # Copy TS outputs
-    COPY --from=ts-dev /temp/dev/typescript ./typescript
-    COPY --from=ts-prod /temp/prod/node_modules ./node_modules
-    
-    EXPOSE 8080 6060
-    CMD ["/root/erpc-server"]    
+# Build stage for Go
+FROM golang:1.23-alpine AS go-builder
+
+WORKDIR /root
+
+# Copy go mod and sum files first for better layer caching
+COPY go.mod go.sum ./
+RUN go mod download
+
+# Copy the source code
+COPY . .
+
+# Set build arguments
+ARG VERSION
+ARG COMMIT_SHA
+
+# Set environment variables for Go build
+ENV CGO_ENABLED=0 \
+    GOOS=linux \
+    LDFLAGS="-w -s -X common.ErpcVersion=${VERSION} -X common.ErpcCommitSha=${COMMIT_SHA}"
+
+# Build the Go binary
+RUN go build -v -ldflags="$LDFLAGS" -a -installsuffix cgo -o erpc-server ./cmd/erpc/main.go && \
+    go build -v -ldflags="$LDFLAGS" -a -installsuffix cgo -tags pprof -o erpc-server-pprof ./cmd/erpc/*.go
+
+# Global typescript related image
+FROM node:20-alpine AS ts-core
+RUN npm install -g pnpm
+
+# Stage where we will install dev dependencies + compile sdk
+FROM ts-core AS ts-dev
+RUN mkdir -p /temp/dev/typescript
+RUN npm install -g pnpm
+
+# Copy only the TypeScript package files
+COPY typescript/config /temp/dev/typescript/config
+COPY pnpm* /temp/dev/
+COPY package.json /temp/dev/package.json
+
+# Install everything and build
+RUN --mount=type=cache,id=pnpm,target=/pnpm/store cd /temp/dev &&  pnpm install --frozen-lockfile 
+RUN cd /temp/dev && pnpm build
+
+# Stage where we will install prod dependencies only
+FROM ts-core AS ts-prod
+RUN mkdir -p /temp/prod/typescript
+
+COPY typescript/config /temp/prod/typescript/config
+COPY pnpm* /temp/prod/
+COPY package.json /temp/prod/package.json
+
+# Install every prod dependencies
+RUN --mount=type=cache,id=pnpm,target=/pnpm/store cd /temp/prod && pnpm install --prod --frozen-lockfile
+
+# Final stage
+FROM debian:stable AS final
+
+WORKDIR /root
+
+# Install CA certificates
+RUN apt-get update --allow-insecure-repositories \
+    && apt-get install -y debian-archive-keyring ca-certificates \
+    && rm -rf /var/lib/apt/lists/*
+
+# Copy Go binary from go-builder
+COPY --from=go-builder /root/erpc-server .
+COPY --from=go-builder /root/erpc-server-pprof .
+
+# Copy TypeScript package files from ts-dev and ts-prod
+COPY --from=ts-dev /temp/dev/typescript ./typescript
+COPY --from=ts-prod /temp/prod/node_modules ./node_modules
+
+# Expose ports
+EXPOSE 8080 6060
+
+# Run the server
+CMD ["/root/erpc-server"]
