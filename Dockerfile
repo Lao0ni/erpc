@@ -48,7 +48,7 @@ COPY pnpm* /temp/dev/
 COPY package.json /temp/dev/package.json
 
 # Install everything and build
-RUN --mount=type=cache,id=s/6e2c4586-c84f-463b-aa5e-93af6d36b830-pnpm,target=/pnpm/store cd /temp/dev &&  pnpm install --frozen-lockfile 
+RUN --mount=type=cache,id=s/bf0f3030-9779-4a04-aa7e-1bd7407ebfcf-pnpm/store,target=/pnpm/store cd /temp/dev &&  pnpm install --frozen-lockfile 
 RUN cd /temp/dev && pnpm build
 
 # Stage where we will install prod dependencies only
@@ -60,7 +60,7 @@ COPY pnpm* /temp/prod/
 COPY package.json /temp/prod/package.json
 
 # Install every prod dependencies
-RUN --mount=type=cache,id=s/6e2c4586-c84f-463b-aa5e-93af6d36b830-pnpm,target=/pnpm/store cd /temp/prod && pnpm install --prod --frozen-lockfile
+RUN --mount=type=cache,id=s/bf0f3030-9779-4a04-aa7e-1bd7407ebfcf-pnpm/store,target=/pnpm/store cd /temp/prod && pnpm install --prod --frozen-lockfile
 
 # Final stage
 FROM debian:stable AS final
