@@ -10,6 +10,14 @@ export default createConfig({
         httpHostV4: "0.0.0.0",
         httpPort: 4000,
     },
+    metrics: {
+        enabled: true,
+        listenV4: true,
+        hostV4: "0.0.0.0",
+        listenV6: false,
+        hostV6: "[::]",
+        port: 4001,
+    },
     database: {
         evmJsonRpcCache: {
             connectors: [
